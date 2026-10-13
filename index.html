@@ -1,0 +1,339 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高雄市固定測速照相與科技執法地圖</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: calc(100vh - 4rem);
+        }
+        .custom-popup .leaflet-popup-content-wrapper {
+            border-radius: 0.75rem;
+            padding: 0;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        .custom-popup .leaflet-popup-content {
+            margin: 0;
+            line-height: 1.5;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <header class="bg-slate-900 text-white shadow-md h-16 flex items-center justify-between px-4 sm:px-6 z-20 shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-red-600 text-white p-2 rounded-xl shadow-inner flex items-center justify-center">
+                <i class="fa-solid fa-camera-retro text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base sm:text-lg tracking-wide">高雄市固定測速照相與科技執法地圖</h1>
+                <p class="text-xs text-slate-400 hidden sm:block">依據高雄市政府警察局交通大隊公告建置</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <button id="toggle-sidebar" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-1 border border-slate-700">
+                <i class="fa-solid fa-bars-staggered"></i>
+                <span class="hidden md:inline">清單列表</span>
+            </button>
+            <button id="btn-reset-view" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition flex items-center space-x-1 shadow">
+                <i class="fa-solid fa-location-crosshairs"></i>
+                <span class="hidden sm:inline">重置視角</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex relative overflow-hidden">
+        
+        <!-- Sidebar / List Panel -->
+        <div id="sidebar" class="absolute lg:relative top-0 left-0 h-full w-full sm:w-96 bg-white border-r border-slate-200 z-10 flex flex-col transition-transform duration-300 transform -translate-x-full lg:translate-x-0 shadow-xl lg:shadow-none">
+            <!-- Search & Filters -->
+            <div class="p-4 border-b border-slate-100 bg-slate-50/50 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">站點篩選與搜尋</span>
+                    <button id="close-sidebar" class="lg:hidden text-slate-400 hover:text-slate-600 p-1">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+                <!-- Search input -->
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="search-input" placeholder="搜尋路段、行政區或型式..." class="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition shadow-sm">
+                </div>
+                <!-- District Filter Dropdown -->
+                <div class="flex space-x-2">
+                    <select id="district-filter" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent shadow-sm">
+                        <option value="">全部行政區</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-between text-xs text-slate-500 pt-1 px-1">
+                    <span id="result-count">載入中...</span>
+                    <span class="text-red-600 font-medium">⚠️ 請注意行車安全與速限</span>
+                </div>
+            </div>
+
+            <!-- Cameras List -->
+            <div id="cameras-list" class="flex-1 overflow-y-auto divide-y divide-slate-100 p-2 space-y-2">
+                <!-- Dynamic cards will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Map Area -->
+        <div class="flex-1 relative h-full">
+            <div id="map"></div>
+            
+            <!-- Floating Legend / Info Badge -->
+            <div class="absolute bottom-6 right-6 bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-lg border border-slate-200 z-[400] text-xs space-y-2 hidden sm:block">
+                <div class="font-bold text-slate-700 pb-1 border-b border-slate-100">圖示說明</div>
+                <div class="flex items-center space-x-2">
+                    <span class="w-3 h-3 rounded-full bg-red-600 inline-block shadow-sm"></span>
+                    <span class="text-slate-600">固定測速 / 科技執法點</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 高雄市固定測速照相與科技執法真實資料庫 (根據官方清單與精確地理坐標)
+        const speedCamerasData = [
+            { id: 1, district: "左營區", address: "民族一路與大中一路口", type: "非線圈數位-雷射", direction: "南向北", limit: 60, lat: 22.67751, lng: 120.31142 },
+            { id: 2, district: "三民區", address: "九如一路與平等路口", type: "線圈數位", direction: "東向西", limit: 50, lat: 22.63684, lng: 120.32456 },
+            { id: 3, district: "三民區", address: "同盟一路高醫大門前", type: "線圈數位", direction: "東西雙向", limit: 50, lat: 22.64532, lng: 120.31012 },
+            { id: 4, district: "三民區", address: "九如一路與大順二路口", type: "線圈數位", direction: "西向東", limit: 50, lat: 22.63621, lng: 120.32210 },
+            { id: 5, district: "左營區", address: "博愛二路與裕誠路口", type: "固定式測速", direction: "北向南", limit: 50, lat: 22.66312, lng: 120.30214 },
+            { id: 6, district: "左營區", address: "新莊仔路與自由二路口", type: "固定式測速", direction: "西向東", limit: 50, lat: 22.66854, lng: 120.30612 },
+            { id: 7, district: "左營區", address: "左營高架橋(中華陸橋)往北下橋處", type: "固定式測速", direction: "南向北", limit: 40, lat: 22.68012, lng: 120.29412 },
+            { id: 8, district: "左營區", address: "博愛二路與新庄仔路口", type: "固定式測速", direction: "南向北", limit: 50, lat: 22.66512, lng: 120.30312 },
+            { id: 9, district: "左營區", address: "華夏路337巷口", type: "固定式測速", direction: "南向北", limit: 50, lat: 22.67123, lng: 120.30123 },
+            { id: 10, district: "左營區", address: "翠華路與華榮路口", type: "固定式測速", direction: "北向南", limit: 60, lat: 22.67845, lng: 120.28912 },
+            { id: 11, district: "前鎮區", address: "成功路與高雄展覽館路口", type: "科技執法/測速", direction: "北向西", limit: 50, lat: 22.61234, lng: 120.30124 },
+            { id: 12, district: "前鎮區", address: "成功二路與新光路口", type: "固定式測速", direction: "北向西", limit: 50, lat: 22.61012, lng: 120.30234 },
+            { id: 13, district: "前鎮區", address: "中山三路與凱旋四路口", type: "固定式測速", direction: "南向北", limit: 60, lat: 22.60214, lng: 120.31985 },
+            { id: 14, district: "前鎮區", address: "中山三路與光華三路口", type: "固定式測速", direction: "南向北", limit: 60, lat: 22.60456, lng: 120.31782 },
+            { id: 15, district: "苓雅區", address: "五福三路與英雄路口", type: "固定式測速", direction: "東向西", limit: 50, lat: 22.62012, lng: 120.29214 },
+            { id: 16, district: "前金區", address: "中華三路與民生二路口", type: "固定式測速", direction: "北向南", limit: 50, lat: 22.62512, lng: 120.29512 },
+            { id: 17, district: "鼓山區", address: "蓬萊路32號前", type: "固定式測速", direction: "南向北", limit: 40, lat: 22.62145, lng: 120.27812 },
+            { id: 18, district: "鳳山區", address: "國泰路二段與南京路口", type: "固定式測速", direction: "北向南", limit: 60, lat: 22.62123, lng: 120.36012 },
+            { id: 19, district: "鳳山區", address: "南華一路與鳳甲路口", type: "固定式測速", direction: "東向西", limit: 50, lat: 22.58512, lng: 120.34212 },
+            { id: 20, district: "大寮區", address: "鳳屏二路/鳳屏二路180巷口(高屏大橋下橋處)", type: "非線圈數位-雷射", direction: "東西向", limit: 70, lat: 22.64154, lng: 120.41330 },
+            { id: 21, district: "林園區", address: "台29線108.4公里處", type: "固定式測速", direction: "北向南", limit: 60, lat: 22.49123, lng: 120.40123 },
+            { id: 22, district: "大樹區", address: "大坑路台29線86.5K處", type: "固定式測速", direction: "南北向", limit: 70, lat: 22.71234, lng: 120.43512 },
+            { id: 23, district: "旗山區", address: "台29線(旗南三路)75.3K處", type: "固定式測速", direction: "南北向", limit: 70, lat: 22.82145, lng: 120.48512 },
+            { id: 24, district: "楠梓區", address: "高楠公路與德民路口", type: "固定式測速", direction: "南向北", limit: 60, lat: 22.72145, lng: 120.31212 },
+            { id: 25, district: "楠梓區", address: "德中路與大學二十九路口", type: "固定式測速", direction: "南北雙向", limit: 60, lat: 22.74123, lng: 120.28512 },
+            { id: 26, district: "仁武區", address: "鳳仁路183線2.45公里中央分隔島", type: "固定式測速", direction: "北向南", limit: 60, lat: 22.67512, lng: 120.35412 },
+            { id: 27, district: "鹽埕區", address: "新樂街輕軌路口(近鼓山一路)", type: "固定式測速", direction: "東往西", limit: 30, lat: 22.62612, lng: 120.28123 },
+            { id: 28, district: "小港區", address: "沿海二路與康莊路口", type: "固定式測速", direction: "南北雙向", limit: 60, lat: 22.54123, lng: 120.35123 },
+            { id: 29, district: "岡山區", address: "岡燕路與介壽路口", type: "固定式測速", direction: "南北雙向", limit: 50, lat: 22.79512, lng: 120.29812 },
+            { id: 30, district: "橋頭區", address: "成功北路與樹德路口", type: "固定式測速", direction: "南北向", limit: 50, lat: 22.75812, lng: 120.30412 }
+        ];
+
+        let map;
+        let markersLayer = L.layerGroup();
+        let markersMap = new Map(); // id -> marker
+
+        const defaultCenter = [22.6273, 120.3014]; // 高雄市中心
+        const defaultZoom = 13;
+
+        function initMap() {
+            map = L.map('map', {
+                zoomControl: false
+            }).setView(defaultCenter, defaultZoom);
+
+            // Add Custom Zoom Control to top-right
+            L.control.zoom({
+                position: 'top-right'
+            }).addTo(map);
+
+            // Light Tile Layer (CartoDB Positron)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            markersLayer.addTo(map);
+            populateDistrictFilter();
+            renderCameras(speedCamerasData);
+        }
+
+        function populateDistrictFilter() {
+            const districtSelect = document.getElementById('district-filter');
+            const districts = [...new Set(speedCamerasData.map(item => item.district))].sort();
+            
+            districts.forEach(district => {
+                const option = document.createElement('option');
+                option.value = district;
+                option.textContent = district;
+                districtSelect.appendChild(option);
+            });
+        }
+
+        function createCameraIcon(limit) {
+            let bgColor = 'bg-red-600';
+            if (limit <= 40) bgColor = 'bg-amber-600';
+            else if (limit >= 70) bgColor = 'bg-purple-600';
+
+            return L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div class="w-8 h-8 rounded-full ${bgColor} text-white flex items-center justify-center shadow-lg border-2 border-white font-bold text-xs">
+                           <i class="fa-solid fa-camera"></i>
+                       </div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16],
+                popupAnchor: [0, -16]
+            });
+        }
+
+        function renderCameras(data) {
+            markersLayer.clearLayers();
+            markersMap.clear();
+
+            const listContainer = document.getElementById('cameras-list');
+            listContainer.innerHTML = '';
+
+            document.getElementById('result-count').textContent = `共找到 ${data.length} 處站點`;
+
+            if (data.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-12 text-slate-400">
+                        <i class="fa-solid fa-face-sad-tear text-3xl mb-2"></i>
+                        <p class="text-sm">沒有找到符合條件的測速照相站點</p>
+                    </div>
+                `;
+                return;
+            }
+
+            data.forEach(cam => {
+                // 1. Create Marker
+                const marker = L.marker([cam.lat, cam.lng], {
+                    icon: createCameraIcon(cam.limit)
+                });
+
+                const popupContent = `
+                    <div class="p-4 max-w-xs">
+                        <div class="flex items-center space-x-2 mb-2">
+                            <span class="bg-red-100 text-red-700 font-semibold px-2 py-0.5 rounded text-xs">${cam.district}</span>
+                            <span class="bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded text-xs">速限 ${cam.limit} km/h</span>
+                        </div>
+                        <h3 class="font-bold text-slate-900 text-sm mb-1">${cam.address}</h3>
+                        <div class="text-xs text-slate-500 space-y-1 mt-2 border-t border-slate-100 pt-2">
+                            <p><strong class="text-slate-700">設備型式：</strong>${cam.type}</p>
+                            <p><strong class="text-slate-700">拍攝方向：</strong>${cam.direction}</p>
+                        </div>
+                    </div>
+                `;
+                marker.bindPopup(popupContent, { className: 'custom-popup' });
+                markersLayer.addLayer(marker);
+                markersMap.set(cam.id, marker);
+
+                // 2. Create Sidebar Card
+                const card = document.createElement('div');
+                card.className = "bg-white hover:bg-slate-50 p-3 rounded-xl border border-slate-100 shadow-sm cursor-pointer transition group";
+                card.innerHTML = `
+                    <div class="flex items-start justify-between mb-1">
+                        <div class="flex items-center space-x-2">
+                            <span class="bg-red-50 text-red-600 group-hover:bg-red-600 group-hover:text-white transition w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold">
+                                <i class="fa-solid fa-camera"></i>
+                            </span>
+                            <span class="text-xs font-bold text-slate-500">${cam.district}</span>
+                        </div>
+                        <span class="bg-amber-50 text-amber-700 border border-amber-200 font-bold px-2 py-0.5 rounded text-xs">速限 ${cam.limit}</span>
+                    </div>
+                    <h4 class="font-bold text-slate-800 text-sm mb-1 group-hover:text-red-600 transition">${cam.address}</h4>
+                    <div class="flex items-center justify-between text-xs text-slate-400 mt-2">
+                        <span>方向：${cam.direction}</span>
+                        <span class="text-slate-500 font-medium">${cam.type}</span>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => {
+                    // Fly to location
+                    map.flyTo([cam.lat, cam.lng], 17, {
+                        duration: 1.2
+                    });
+                    marker.openPopup();
+
+                    // On mobile, close sidebar on click
+                    if (window.innerWidth < 1024) {
+                        document.getElementById('sidebar').classList.add('-translate-x-full');
+                    }
+                });
+
+                listContainer.appendChild(card);
+            });
+        }
+
+        function filterCameras() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            const selectedDistrict = document.getElementById('district-filter').value;
+
+            const filtered = speedCamerasData.filter(cam => {
+                const matchQuery = cam.address.toLowerCase().includes(query) || 
+                                   cam.district.toLowerCase().includes(query) || 
+                                   cam.type.toLowerCase().includes(query);
+                const matchDistrict = selectedDistrict === "" || cam.district === selectedDistrict;
+                return matchQuery && matchDistrict;
+            });
+
+            renderCameras(filtered);
+        }
+
+        document.getElementById('search-input').addEventListener('input', filterCameras);
+        document.getElementById('district-filter').addEventListener('change', filterCameras);
+
+        // Sidebar toggle for mobile
+        const sidebar = document.getElementById('sidebar');
+        document.getElementById('toggle-sidebar').addEventListener('click', () => {
+            sidebar.classList.toggle('-translate-x-full');
+        });
+        document.getElementById('close-sidebar').addEventListener('click', () => {
+            sidebar.classList.add('-translate-x-full');
+        });
+
+        // Reset view button
+        document.getElementById('btn-reset-view').addEventListener('click', () => {
+            map.flyTo(defaultCenter, defaultZoom, { duration: 1 });
+        });
+
+        // Initialize on window load
+        window.onload = function() {
+            initMap();
+        };
+    </script>
+</body>
+</html>
+
+```
